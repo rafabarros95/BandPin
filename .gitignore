@@ -1,0 +1,27 @@
+uv run python -c "
+content = '''
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# uv
+.python-version
+
+# IntelliJ
+.idea/
+*.iml
+
+# Study data (never commit participant data)
+data/
+/tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+'''
+open('.gitignore', 'w').write(content)
+print('done')
+"
