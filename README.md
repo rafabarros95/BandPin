@@ -76,10 +76,8 @@ Full constant list: [shared/constants.py](shared/constants.py).
 ```
 BandPin/
 ├── Backend/
-│   ├── BandPinFirmware/
-│   │   └── BandPinFirmware.ino   ← THE firmware: 2× Trill Flex + gesture engine + BLE
-│   └── Test_touch/
-│       └── sketch_jun27a.ino     ← raw-data hardware test (kept for debugging)
+│   └── BandPinFirmware/
+│       └── BandPinFirmware.ino   ← THE firmware: 2× Trill Flex + gesture engine + BLE
 │
 ├── Frontend/                     ← Wear OS app (Android Studio project)
 │   └── app/src/main/java/com/android/bandpinwatch/
@@ -89,11 +87,7 @@ BandPin/
 │           ├── MainActivity.kt               ← permissions, haptics, screens
 │           └── PinInputController.kt         ← study state machine (SETUP→ENTERING→RESULT)
 │
-├── shared/constants.py           ← protocol reference (UUIDs, events, gesture params)
-├── study_logger.py               ← laptop-side logger (optional, serial-based analysis)
-│
-├── esp32_firmware/               ← DEPRECATED: old CasePin MicroPython concept
-└── watch_app/                    ← DEPRECATED: old CasePin Kotlin sketch
+└── shared/constants.py           ← protocol reference (UUIDs, events, gesture params)
 ```
 
 ---
