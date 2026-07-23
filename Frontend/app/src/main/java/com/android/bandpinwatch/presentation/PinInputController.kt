@@ -1,61 +1,14 @@
 package com.android.bandpinwatch.presentation
 
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-<<<<<<< Updated upstream
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-
-class PinInputController {
-    var enteredDigits by mutableStateOf(0)
-        private set
-
-    var pinStatus by mutableStateOf(PinStatus.NONE)
-        private set
-
-    fun onInput(input: Int) {
-        //Ignore invalid inputs
-        if (input !in 0..3) {
-            return
-
-        }
-
-        if (enteredDigits >= 4) {
-            return
-        }
-
-        enteredDigits++
-
-        // Call Validiation
-        validatePin()
-        if (enteredDigits == 4) {
-           // delay(200)
-            //reset()
-        }
-        println(enteredDigits)
-    }
-
-    fun reset() {
-        enteredDigits = 0
-        pinStatus = PinStatus.NONE
-    }
-
-    fun validatePin() {
-        if( enteredDigits < 4) {
-            return
-        }
-        pinStatus = PinStatus.SUCCESS
-
-
-    }
-}
-=======
 import com.android.bandpinwatch.ble.BandEvent
 import com.android.bandpinwatch.ble.BandEventType
 import com.android.bandpinwatch.study.TrialLogger
 import kotlin.math.abs
-import kotlin.random.Random
 
 
 /** Haptic cues the controller asks the watch to play. */
@@ -84,7 +37,14 @@ class PinInputController(
     private var lastSelectMs: Long = 0,
     initialTrialNumber: Int = 1,
     private val saveNextTrialNumber: (Int) -> Unit = {},
-) {
+
+    // save new Pin
+    initialPin: List<Int> = listOf(5, 5, 6, 7),
+    private val savePin: (List<Int>) -> Unit = {},
+    private val onSetPinFinished: () -> Unit = {},
+
+
+    ) {
     companion object {
         const val PIN_LENGTH = 4
     }
@@ -105,7 +65,9 @@ class PinInputController(
     var trialNumber by mutableStateOf(initialTrialNumber)
         private set
 
-    var targetPin by mutableStateOf(generatePin())
+    /*var targetPin by mutableStateOf(generatePin())
+        private set*/
+    var targetPin by mutableStateOf(initialPin)
         private set
 
     /** Number of digits entered — the UI only ever sees the count, never the digits. */
@@ -134,6 +96,7 @@ class PinInputController(
 
     private var lastDeleteMs: Long = 0
 
+    private var setPinFinishing = false
     private val recentLoggedEvents = mutableMapOf<String, Long>()
 
     private var numTicks = 0
@@ -152,14 +115,12 @@ class PinInputController(
         if (phase != StudyPhase.SETUP) return
         participantNumber = (participantNumber + delta).coerceIn(1, 99)
         trialNumber = 1
-        targetPin = generatePin()
     }
 
     /** Toggle between single-strip (0-4) and two-strip (0-9) code generation. */
     fun toggleDigitRange() {
         if (phase != StudyPhase.SETUP) return
         maxDigit = if (maxDigit == 4) 9 else 4
-        targetPin = generatePin()
     }
 
     /** Participant has memorised the code — hide it and start the trial. */
@@ -192,9 +153,7 @@ class PinInputController(
     fun cancelTrial() {
         if (phase == StudyPhase.ENTERING) {
             logger?.logSessionEvent(
-                participant = participantId,
-                trial = trialNumber,
-                eventName = "TRIAL_CANCELLED"
+                participant = participantId, trial = trialNumber, eventName = "TRIAL_CANCELLED"
             )
         }
 
@@ -217,6 +176,9 @@ class PinInputController(
         setPinStep = SetPinStep.FIRST_ENTRY
         isRepeatStep = false
 
+        // اجازه شروع یک Set PIN جدید
+        setPinFinishing = false
+
         firstSetPin.clear()
         enteredDigits.clear()
         enteredCount = 0
@@ -237,16 +199,18 @@ class PinInputController(
         phase = StudyPhase.ENTERING
     }
 
-
     /** Ready for another eyes-free entry — fresh code, same participant. */
     fun prepareNextTrial() {
-        targetPin = generatePin()
         startTrial()
     }
 
     // ── Band events ─────────────────────────────────────────────────────────
 
     fun onBandEvent(event: BandEvent) {
+
+        if (setPinFinishing) return
+
+
         val now = event.receivedAtMs
         val key = "${event.type};${event.strip};${event.digit};${event.boardTimeMs}"
 
@@ -334,27 +298,45 @@ class PinInputController(
 
 
     private fun handleSetPinCompleted() {
+
+
+        if (setPinFinishing) return
+
         if (setPinStep == SetPinStep.FIRST_ENTRY) {
+
+
             firstSetPin.clear()
             firstSetPin.addAll(enteredDigits)
 
             enteredDigits.clear()
             enteredCount = 0
 
+
             isRepeatStep = true
             setPinStep = SetPinStep.REPEAT_ENTRY
 
-            //lastSelectMs = 0
+
             lastSelectMs = System.currentTimeMillis()
             lastDeleteMs = 0
 
             playHaptic(HapticCue.SUCCESS)
+
             return
         }
 
         if (setPinStep == SetPinStep.REPEAT_ENTRY) {
-            if (enteredDigits == firstSetPin) {
-                targetPin = firstSetPin.toList()
+
+
+            val repeatedPin = enteredDigits.toList()
+            val originalPin = firstSetPin.toList()
+
+            if (repeatedPin == originalPin) {
+
+
+                setPinFinishing = true
+
+                targetPin = originalPin
+                savePin(originalPin)
 
                 enteredDigits.clear()
                 enteredCount = 0
@@ -362,28 +344,36 @@ class PinInputController(
                 setPinStep = SetPinStep.DONE
                 isRepeatStep = false
 
+
+                phase = StudyPhase.RESULT
+
+                lastSelectMs = System.currentTimeMillis()
+                lastDeleteMs = System.currentTimeMillis()
+
+                playHaptic(HapticCue.SUCCESS)
+
+
+                Handler(Looper.getMainLooper()).postDelayed({
+                    onSetPinFinished()
+                }, 600)
+
+            } else {
+
+
+                enteredDigits.clear()
+                enteredCount = 0
+                firstSetPin.clear()
+
+                isRepeatStep = false
+                setPinStep = SetPinStep.FIRST_ENTRY
+
                 lastSelectMs = System.currentTimeMillis()
                 lastDeleteMs = 0
 
-                playHaptic(HapticCue.SUCCESS)
-            } else {
-                enteredDigits.clear()
-                enteredCount = 0
-
-                setPinStep = SetPinStep.MISMATCH
-                isRepeatStep = false
-                firstSetPin.clear()
-
-                lastSelectMs = 0
-                lastDeleteMs = 0
-
                 playHaptic(HapticCue.FAILURE)
-
-                setPinStep = SetPinStep.FIRST_ENTRY
             }
         }
     }
-
 
 // ── Internals ───────────────────────────────────────────────────────────
 
@@ -453,4 +443,3 @@ class PinInputController(
         return listOf(5, 5, 6, 7)
     }
 }
->>>>>>> Stashed changes

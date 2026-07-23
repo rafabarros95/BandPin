@@ -27,98 +27,6 @@ import androidx.wear.compose.material.TimeText
 import androidx.wear.tooling.preview.devices.WearDevices
 import com.android.bandpinwatch.R
 import com.android.bandpinwatch.presentation.theme.BandPinWatchTheme
-<<<<<<< Updated upstream
-import androidx.compose.foundation.clickable
-import androidx.compose.runtime.remember
-
-import androidx.compose.runtime.LaunchedEffect
-import kotlinx.coroutines.delay
-import androidx.activity.compose.LocalActivity
-import android.content.Intent
-import android.os.Handler
-import android.os.Looper
-
-import android.app.Activity
-import androidx.compose.ui.platform.LocalContext
-import androidx.wear.compose.material.TimeTextDefaults
-
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        setContent {
-            WearApp()
-        }
-    }
-}
-
-// Current PIN result state
-enum class PinStatus {
-    NONE,
-    SUCCESS,
-    FAILED
-}
-
-@Composable
-fun WearApp() {
-
-    // Demo values for preview
-    // Demo values for preview
-    val controller = remember { PinInputController() }
-    val enteredDigits = controller.enteredDigits
-    val pinStatus = controller.pinStatus
-
-    val activity = LocalActivity.current
-
-    LaunchedEffect(pinStatus) {
-        when (pinStatus) {
-            PinStatus.SUCCESS -> {
-                delay(400)
-                controller.reset()
-
-                val intent = Intent(activity, MainActivity::class.java)
-
-                activity?.finish()
-
-                Handler(Looper.getMainLooper()).postDelayed({
-                    activity?.startActivity(intent)
-                }, 300)
-            }
-
-            PinStatus.FAILED -> {
-                delay(600)
-                controller.reset()
-            }
-
-            PinStatus.NONE -> return@LaunchedEffect
-        }
-    }
-        BandPinWatchTheme {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colors.background)
-                    .clickable {
-                        controller.onInput(0)
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                TimeText(
-                    timeTextStyle = TimeTextDefaults.timeTextStyle(
-                        color = Color(64, 224, 208)
-                    )
-                )
-
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    PinIndicator(
-                        enteredDigits = enteredDigits
-                    )
-
-                    StatusMessage(
-                        pinStatus = pinStatus
-=======
 import com.android.bandpinwatch.study.TrialLogger
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
@@ -163,6 +71,8 @@ class MainActivity : ComponentActivity() {
     private var bleClient: BandBleClient? = null
     private val bandConnected = mutableStateOf(false)
 
+    private val currentScreen = mutableStateOf(AppScreen.MENU)
+
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
             if (grants.values.all { it }) startBle()
@@ -172,13 +82,46 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        @Suppress("DEPRECATION") vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
+        @Suppress("DEPRECATION")
+        vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
+
+        val preferences = getSharedPreferences(
+            "bandpin_preferences",
+            MODE_PRIVATE
+        )
+
+
+        val savedPinString = preferences.getString(
+            "saved_pin",
+            "5567"
+        ) ?: "5567"
+
+
+        val savedPin = savedPinString
+            .mapNotNull { char -> char.digitToIntOrNull() }
+            .takeIf { it.size == PinInputController.PIN_LENGTH }
+            ?: listOf(5, 5, 6, 7)
 
         controller = PinInputController(
             logger = TrialLogger(this),
             playHaptic = ::playHaptic,
-        )
 
+
+            initialPin = savedPin,
+
+
+            savePin = { newPin ->
+                preferences.edit()
+                    .putString(
+                        "saved_pin",
+                        newPin.joinToString("")
+                    )
+                    .apply()
+            },
+            onSetPinFinished = {
+                currentScreen.value = AppScreen.MENU
+            }
+        )
         /*if (intent.getBooleanExtra(EXTRA_AFTER_UNLOCK, false)) {
             controller.prepareNextTrial()
         } else {
@@ -186,25 +129,22 @@ class MainActivity : ComponentActivity() {
         } */
 
         setContent {
-            var currentScreen by remember {
-                mutableStateOf(AppScreen.MENU)
-            }
-
-            BackHandler(enabled = currentScreen != AppScreen.MENU) {
+            BackHandler(enabled = currentScreen.value != AppScreen.MENU) {
                 controller.cancelTrial()
-                currentScreen = AppScreen.MENU
+                currentScreen.value = AppScreen.MENU
             }
 
-            when (currentScreen) {
+
+            when (currentScreen.value) {
                 AppScreen.MENU -> {
                     MenuScreen(
                         onEnterPinClick = {
                             controller.startTrial()
-                            currentScreen = AppScreen.ENTER_PIN
+                            currentScreen.value = AppScreen.ENTER_PIN
                         },
                         onSetPinClick = {
                             controller.startSetPin()
-                            currentScreen = AppScreen.SET_PIN
+                            currentScreen.value = AppScreen.SET_PIN
                         }
                     )
                 }
@@ -217,44 +157,10 @@ class MainActivity : ComponentActivity() {
                     SetPinScreen(
                         enteredDigits = controller.enteredCount,
                         isRepeatStep = controller.isRepeatStep
->>>>>>> Stashed changes
                     )
                 }
             }
         }
-<<<<<<< Updated upstream
-    }
-
-    // PIN progress circles
-    @Composable
-    fun PinIndicator(
-        enteredDigits: Int,
-        pinLength: Int = 4,
-        colorCircle : Color = Color(64, 224, 208)
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            repeat(pinLength) { index ->
-                Box(
-                    modifier = Modifier
-                        .size(12.dp)
-                        .then(
-                            if (index < enteredDigits) {
-                                Modifier.background(
-                                    colorCircle,
-                                    CircleShape
-                                )
-                            } else {
-                                Modifier.border(
-                                    2.dp,
-                                    colorCircle,
-                                    CircleShape
-                                )
-                            }
-                        )
-                )
-=======
 
 
         ensureBlePermissions()
@@ -411,39 +317,10 @@ fun WearApp(
                 activity?.closeAndReopenApp()
             } else {
                 controller.retrySameTrial()
->>>>>>> Stashed changes
             }
         }
     }
 
-<<<<<<< Updated upstream
-    // Shows success or failure only after validation
-    @Composable
-    fun StatusMessage(
-        pinStatus: PinStatus
-    ) {
-        val message = when (pinStatus) {
-            PinStatus.SUCCESS -> stringResource(R.string.pin_success)
-            PinStatus.FAILED -> stringResource(R.string.pin_failed)
-            PinStatus.NONE -> null
-        }
-
-        if (message != null) {
-            Text(
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colors.primary,
-                text = message
-            )
-        }
-    }
-
-    @Preview(device = WearDevices.SMALL_ROUND, showSystemUi = true)
-    @Composable
-    fun DefaultPreview() {
-        WearApp()
-    }
-=======
     BandPinWatchTheme {
         Box(
             modifier = Modifier
@@ -451,11 +328,11 @@ fun WearApp(
                 .background(MaterialTheme.colors.background),
             contentAlignment = Alignment.Center
         ) {
-            TimeText(
-                timeTextStyle = TimeTextDefaults.timeTextStyle(
-                    color = if (bandConnected.value) Color.Green else Color.Red
-                )
-            )
+            /* TimeText(
+                 timeTextStyle = TimeTextDefaults.timeTextStyle(
+                     color = if (bandConnected.value) Color.Green else Color.Red
+                 )
+             )*/
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -531,4 +408,3 @@ fun DefaultPreview() {
         bandConnected = remember { mutableStateOf(false) },
     )
 }
->>>>>>> Stashed changes
