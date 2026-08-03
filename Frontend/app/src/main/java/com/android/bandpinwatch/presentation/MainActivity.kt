@@ -23,7 +23,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
-import androidx.wear.compose.material.TimeText
 import androidx.wear.tooling.preview.devices.WearDevices
 import com.android.bandpinwatch.R
 import com.android.bandpinwatch.presentation.theme.BandPinWatchTheme
@@ -47,10 +46,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
-import androidx.wear.compose.material.TimeTextDefaults
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import com.android.bandpinwatch.presentation.screen.MenuScreen
 import com.android.bandpinwatch.presentation.screen.SetPinScreen
 
@@ -122,11 +118,6 @@ class MainActivity : ComponentActivity() {
                 currentScreen.value = AppScreen.MENU
             }
         )
-        /*if (intent.getBooleanExtra(EXTRA_AFTER_UNLOCK, false)) {
-            controller.prepareNextTrial()
-        } else {
-            controller.startTrial()
-        } */
 
         setContent {
             BackHandler(enabled = currentScreen.value != AppScreen.MENU) {
@@ -174,7 +165,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ── BLE ────────────────────────────────────────────────────────────────
+    //BLE
 
     private fun ensureBlePermissions() {
         val needed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -238,61 +229,110 @@ class MainActivity : ComponentActivity() {
         }
         bleClient = null
     }
-
-    // ── Haptics — each cue must feel distinct (eyes-free!) ─────────────────
-
     private fun playHaptic(cue: HapticCue) {
+
         val effect = when (cue) {
-            // Zone change: very short, weak, uniform
-            HapticCue.TICK -> VibrationEffect.createWaveform(
-                longArrayOf(0, 40),
-                intArrayOf(0, 90),
-                -1
-            )
 
-            // Select: clear, slightly stronger, still clean
-            HapticCue.SELECT -> VibrationEffect.createWaveform(
-                longArrayOf(0, 100),
-                intArrayOf(0, 180),
-                -1
-            )
+            // Zone change:
+            HapticCue.TICK -> {
+                VibrationEffect.createWaveform(
+                    longArrayOf(
+                        0,
+                        30
+                    ),
+                    intArrayOf(
+                        0,
+                        80
+                    ),
+                    -1
+                )
+            }
 
-            // Delete: two short pulses
+            // Correct digit selected:
+            HapticCue.SELECT -> {
+                VibrationEffect.createWaveform(
+                    longArrayOf(
+                        0,
+                        220
+                    ),
+                    intArrayOf(
+                        0,
+                        210
+                    ),
+                    -1
+                )
+            }
+
+            // Wrong digit:
+            HapticCue.WRONG_DIGIT,
             HapticCue.DELETE -> VibrationEffect.createWaveform(
                 longArrayOf(0, 60, 60, 60),
                 intArrayOf(0, 180, 0, 180),
                 -1
             )
 
-            // Correct PIN: positive, three smooth pulses
-            /*HapticCue.SUCCESS -> VibrationEffect.createWaveform(
-                longArrayOf(0, 70, 50, 90, 50, 120),
-                intArrayOf(0, 130, 0, 180, 0, 220),
-                -1
-            )*/
-            HapticCue.SUCCESS -> VibrationEffect.createWaveform(
-                longArrayOf(
-                    0, 70, 50, 90, 50, 120,
-                    50, 70, 50, 90, 50, 120
-                ),
-                intArrayOf(
-                    0, 130, 0, 180, 0, 220,
-                    0, 130, 0, 180, 0, 220
-                ),
-                -1
-            )
-            // Error: rough / repetitive / clearly different
-            HapticCue.FAILURE ->
+            // Delete:
+            HapticCue.DELETE -> {
                 VibrationEffect.createWaveform(
-                    longArrayOf(0, 350),
-                    intArrayOf(0, 255),
+                    longArrayOf(
+                        0,
+                        300,
+                        150,
+                        80
+                    ),
+                    intArrayOf(
+                        0,
+                        220,
+                        0,
+                        170
+                    ),
                     -1
                 )
+            }
+
+            // Correct PIN:
+            HapticCue.SUCCESS -> {
+                VibrationEffect.createWaveform(
+                    longArrayOf(
+                        0,
+                        70,
+                        100,
+                        160,
+                        100,
+                        350
+                    ),
+                    intArrayOf(
+                        0,
+                        130,
+                        0,
+                        190,
+                        0,
+                        255
+                    ),
+                    -1
+                )
+            }
+
+            // Wrong PIN:
+            HapticCue.FAILURE -> {
+                VibrationEffect.createWaveform(
+                    longArrayOf(
+                        0,
+                        900
+                    ),
+                    intArrayOf(
+                        0,
+                        255
+                    ),
+                    -1
+                )
+            }
         }
+
+        vibrator.cancel()
         vibrator.vibrate(effect)
     }
 }
-
 
 // Current PIN result state
 enum class PinStatus {
