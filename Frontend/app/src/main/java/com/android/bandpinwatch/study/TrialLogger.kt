@@ -76,7 +76,7 @@ class TrialLogger(context: Context) {
         numSelects: Int,
         numDeletes: Int,
         numTicks: Int,
-        condition: String
+        //condition: String
     ) {
         val row = listOf(
             participant,
@@ -91,7 +91,7 @@ class TrialLogger(context: Context) {
             numSelects,
             numDeletes,
             numTicks,
-            condition
+            //condition
         ).joinToString(";") + "\n"
 
         trialsFile.appendText(row)

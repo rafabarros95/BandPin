@@ -12,7 +12,14 @@ import kotlin.math.abs
 
 
 /** Haptic cues the controller asks the watch to play. */
-enum class HapticCue { TICK, SELECT, DELETE, SUCCESS, FAILURE }
+enum class HapticCue {
+    TICK,
+    SELECT,
+    WRONG_DIGIT,
+    DELETE,
+    SUCCESS,
+    FAILURE
+}
 
 /** Study flow phases. */
 enum class StudyPhase { SETUP, ENTERING, RESULT }
@@ -109,7 +116,7 @@ class PinInputController(
     private val participantId: String
         get() = "P%02d".format(participantNumber)
 
-    // ── Setup screen actions ────────────────────────────────────────────────
+    //  Setup screen actions
 
     fun changeParticipant(delta: Int) {
         if (phase != StudyPhase.SETUP) return
@@ -118,6 +125,7 @@ class PinInputController(
     }
 
     /** Toggle between single-strip (0-4) and two-strip (0-9) code generation. */
+
     fun toggleDigitRange() {
         if (phase != StudyPhase.SETUP) return
         maxDigit = if (maxDigit == 4) 9 else 4
@@ -126,6 +134,9 @@ class PinInputController(
     /** Participant has memorised the code — hide it and start the trial. */
     fun startTrial() {
         mode = PinMode.ENTER_PIN
+
+
+        setPinFinishing = false
 
         enteredDigits.clear()
         enteredCount = 0
@@ -176,7 +187,6 @@ class PinInputController(
         setPinStep = SetPinStep.FIRST_ENTRY
         isRepeatStep = false
 
-        // اجازه شروع یک Set PIN جدید
         setPinFinishing = false
 
         firstSetPin.clear()
@@ -204,7 +214,7 @@ class PinInputController(
         startTrial()
     }
 
-    // ── Band events ─────────────────────────────────────────────────────────
+    // Band events
 
     fun onBandEvent(event: BandEvent) {
 
@@ -244,22 +254,51 @@ class PinInputController(
 
                 if (enteredDigits.size >= PIN_LENGTH) return
 
-                val expectedDigit = targetPin.getOrNull(enteredDigits.size)
+                val currentIndex = enteredDigits.size
 
-                val isWrongDigit = expectedDigit != null && event.digit != expectedDigit
+                val expectedDigit = when {
+                    mode == PinMode.ENTER_PIN -> {
+                        targetPin.getOrNull(currentIndex)
+                    }
+
+                    mode == PinMode.SET_PIN &&
+                            setPinStep == SetPinStep.FIRST_ENTRY -> {
+                        null
+                    }
+
+                    // Same Pin
+                    mode == PinMode.SET_PIN &&
+                            setPinStep == SetPinStep.REPEAT_ENTRY -> {
+                        firstSetPin.getOrNull(currentIndex)
+                    }
+
+                    else -> null
+                }
+
+                val isWrongDigit =
+                    expectedDigit != null && event.digit != expectedDigit
 
                 if (isWrongDigit) {
                     selectionErrorCount++
 
-                    if (abs(event.digit - expectedDigit) == 1) {
+                    if (abs(event.digit - expectedDigit!!) == 1) {
                         neighborErrorCount++
                     }
                 }
 
+                playHaptic(
+                    if (isWrongDigit) {
+                        HapticCue.WRONG_DIGIT
+                    } else {
+                        HapticCue.SELECT
+                    }
+                )
+
+
+
                 numSelects++
                 enteredDigits.add(event.digit)
                 enteredCount = enteredDigits.size
-
 
                 if (enteredDigits.size == PIN_LENGTH) {
                     if (mode == PinMode.SET_PIN) {
@@ -267,14 +306,6 @@ class PinInputController(
                     } else {
                         confirmEntry(event.receivedAtMs)
                     }
-                } else {
-                    playHaptic(
-                        if (mode == PinMode.SET_PIN) {
-                            HapticCue.SELECT
-                        } else {
-                            if (isWrongDigit) HapticCue.DELETE else HapticCue.SELECT
-                        }
-                    )
                 }
             }
 
@@ -375,9 +406,9 @@ class PinInputController(
         }
     }
 
-// ── Internals ───────────────────────────────────────────────────────────
+// Internals
 
-    /** 4th digit entered → auto-confirm, no separate confirm gesture. */
+    /* 4th digit entered → auto-confirm, no separate confirm gesture. */
     private fun confirmEntry(nowMs: Long) {
         lastEntryTimeMs = if (firstContactMs > 0) nowMs - firstContactMs else 0
 
@@ -400,7 +431,7 @@ class PinInputController(
             numSelects = numSelects,
             numDeletes = numDeletes,
             numTicks = numTicks,
-            condition = condition
+            //condition = condition
         )
 
         logger?.logSessionEvent(
@@ -411,10 +442,9 @@ class PinInputController(
 
         playHaptic(if (correct) HapticCue.SUCCESS else HapticCue.FAILURE)
 
-        trialNumber++
-        saveNextTrialNumber(trialNumber)
-
         if (correct) {
+            trialNumber++
+            saveNextTrialNumber(trialNumber)
             phase = StudyPhase.RESULT
         } else {
             retrySameTrial()
@@ -439,7 +469,7 @@ class PinInputController(
         phase = StudyPhase.ENTERING
     }
 
-    private fun generatePin(): List<Int> {
+   /* private fun generatePin(): List<Int> {
         return listOf(5, 5, 6, 7)
-    }
+    }*/
 }
