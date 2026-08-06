@@ -2,8 +2,8 @@
 
 Eyes-free PIN entry on the smartwatch wristband
 
-TH Köln · moxd lab · Mobile and Distributed Interactive Systems (MODI SoSe 26)
-Team: Rafael Barros · Mahyar Aghazadeh
+*TH Köln · moxd lab · Mobile and Distributed Interactive Systems (MODI SoSe 26)
+Team: Rafael Barros · Mahyar Aghazadeh*
 
 ---
 
