@@ -18,6 +18,12 @@ import android.util.Log
 import java.util.UUID
 
 /**
+ * Zones per strip. Must stay in sync with `NUM_ZONES` in BandPinFirmware.ino
+ * and `ZONES_PER_STRIP` in shared/constants.py.
+ */
+const val ZONES_PER_STRIP = 5
+
+/**
  * Event types sent by the ESP32 gesture engine.
  * Must stay in sync with BandPinFirmware.ino.
  */
@@ -44,7 +50,10 @@ data class BandEvent(
     val position: Float,
     val boardTimeMs: Int,
     val receivedAtMs: Long = System.currentTimeMillis(),
-)
+) {
+    /** Zone within the strip, 0-based — the digit with the strip offset removed. */
+    val zone: Int get() = digit % ZONES_PER_STRIP
+}
 
 /**
  * BLE GATT client for the ESP32 "BandPin" peripheral.

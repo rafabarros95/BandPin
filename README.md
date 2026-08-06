@@ -1,273 +1,276 @@
 # BandPin
 
-**Shoulder-surfing-resistant PIN entry via the smartwatch wristband**
+Eyes-free PIN entry on the smartwatch wristband
 
-TH Köln · moxd lab · Mobile and Distributed Interactive Systems (MoDIS SoSe 26)
+TH Köln · moxd lab · Mobile and Distributed Interactive Systems (MODI SoSe 26)
 Team: Rafael Barros · Mahyar Aghazadeh
-Supervisor: Prof. Dr. Matthias Böhmer
 
 ---
 
 ## What this project is
 
-BandPin is a research prototype that investigates whether moving PIN entry away
-from the smartwatch touchscreen — and onto the wristband — meaningfully reduces
-the risk of shoulder-surfing attacks, while remaining usable enough for everyday use.
+Entering a PIN on a smartwatch means operating a keypad of roughly three
+centimetres with a fingertip that covers a large share of it. BandPin moves the
+whole task off the display and onto the wristband instead.
 
-The starting point for this work is Khan et al.'s finding that **80% of 4-digit PINs
-entered on a touchscreen can be reconstructed by an attacker after only 4 observations**.
-BandPin asks: what happens to that number when the user taps the wristband instead of
-the screen?
+Two capacitive Trill Flex strips are mounted above and below the watch case.
+Each strip is divided into five zones, so the two strips together cover the
+digits 0 to 9. An ESP32 in the band runs the complete gesture engine and streams
+high-level events to a Wear OS app over BLE.
+
+The primary research interest is usability and learnability: can people actually
+learn this kind of interaction, and how quickly does it become workable? Reduced
+exposure to onlookers is a secondary motivation, not the goal of the project.
+
+The watch screen never shows a digit, only four progress dots. That is a hard
+constraint of the concept rather than a styling choice, so preserve it in any
+UI change.
 
 ---
 
 ## Research question
 
-> Does PIN entry via a capacitive sensor stripe on the smartwatch wristband provide
-> measurably better shoulder-surfing resistance than conventional touchscreen PIN entry,
-> while remaining usable and learnable?
+> Can a four-digit PIN be entered reliably and eyes-free on capacitive sensor
+> strips mounted on a smartwatch wristband, using only haptic feedback, and can
+> users learn this interaction well enough to perform it without looking?
 
-Three dimensions are measured:
-
-| Dimension | Metric |
-|---|---|
-| **Security** | PIN reconstruction success rate (attacker role) |
-| **Usability** | Task completion time · error rate · NASA-TLX |
-| **Learnability** | Performance change across repeated sessions |
-
----
-
-## Where BandPin sits in the literature
-
-Two HCI research threads rarely overlap: *wristband/case input* and *shoulder-surfing-resistant PINs*.
-
-```
-Wristband / case input          Shoulder-surfing-resistant PINs
-────────────────────────        ────────────────────────────────
-CaseTouch (Stanke et al. MUM'24)   2GesturePIN (Guerar et al. 2019)
-MultiBezel (Reuter et al. CHI'25)  Khan et al. — 80% attack baseline
-MultiBand  (Böhmer et al. 2026)
-
-                    ↘        ↙
-                      BandPin
-               (security + wristband input)
-```
-
-BandPin is the first prototype to combine these threads on a smartwatch wristband.
-The hardware builds directly on CaseTouch (Stanke et al., MUM '24) and MultiBand
-(Böhmer et al., 2026), reusing the Trill Flex + ESP32 setup without any cutting or
-hardware modification.
+Shoulder-surfing resistance would require a separate observer study, which has
+not been run. See the manuscript for what can and cannot be claimed from the
+data collected so far.
 
 ---
 
 ## How a digit is entered
 
-The Trill Flex strip runs along the wristband below the watch face. It is divided into
-three logical zones:
-
 ```
-  wrist-proximal ◄──────── wristband ────────► fingertip-distal
-  ┌─────────────┬─────────────────┬─────────────────────────────┐
-  │    LEFT     │       MID       │            RIGHT             │
-  │   (0–33%)   │   (33%–67%)    │          (67%–100%)          │
-  └─────────────┴─────────────────┴─────────────────────────────┘
-```
-
-For each of the 4 PIN digits, the watch screen shows a **randomised** digit→zone
-mapping, for example:
-
-```
-  LEFT: 0 3 7 9      MID: 1 4 8      RIGHT: 2 5 6
+   strip A (top of case)      digits 0 1 2 3 4
+  ┌────┬────┬────┬────┬────┐
+  │ 0  │ 1  │ 2  │ 3  │ 4  │
+  └────┴────┴────┴────┴────┘
+        ▓▓▓ watch case ▓▓▓          <- the tactile landmark between the ranges
+  ┌────┬────┬────┬────┬────┐
+  │ 5  │ 6  │ 7  │ 8  │ 9  │
+  └────┴────┴────┴────┴────┘
+   strip B (palm side)        digits 5 6 7 8 9
 ```
 
-The user glances at the screen, finds their digit, then taps the matching zone on the
-band — never touching the screen. An observer watching the wrist sees *which zone*
-was tapped (roughly 33% of the information per digit), but not which digit, because
-the mapping shuffles on every entry attempt. Video replay is therefore defeated.
+The layout is fixed. There is no randomised mapping to read off the screen,
+because reading anything off the screen would defeat the point.
 
-When a zone contains multiple digits, the intra-zone tap position (left vs right within
-the zone) disambiguates the exact digit. The watch confirms silently with a 30 ms haptic
-pulse.
+| Gesture | Event | Meaning |
+|---|---|---|
+| Finger lands | `DOWN` | contact begins, exploration is silent |
+| Slide across a zone boundary | `TICK` | entered the next zone |
+| Double-tap in a zone | `SELECT` | digit entered |
+| Hold about 2 s without sliding | `DELETE` | remove last digit, repeats while held |
+| Finger lifts | `UP` | contact ends |
 
-**Security property in one line:**
-> Observer sees zone (~33% info per digit) · Randomised mapping defeats video replay ·
-> Touchscreen shows nothing (100% occlusion of input).
+Sliding cancels a pending tap in the firmware, so an exploratory sweep can never
+be mistaken for a selection. That is what makes the interaction safe to perform
+blind: you slide and count ticks to find a zone, then double-tap to commit.
+
+### Haptic vocabulary
+
+All feedback comes from the watch. The patterns are as implemented in
+`MainActivity.playHaptic`.
+
+| Cue | Pattern | When |
+|---|---|---|
+| Tick | 30 ms at amplitude 80 | a zone boundary was crossed |
+| Select | 220 ms at amplitude 210 | a digit was selected and it matches the expected one |
+| Wrong digit | two 60 ms pulses at amplitude 180 | the selected digit does not match |
+| Delete | currently identical to wrong digit, see Known issues | a digit was removed |
+| Success | three rising pulses, 70 / 160 / 350 ms at amplitude 130 / 190 / 255 | the PIN is correct, or both Set-PIN entries match |
+| Failure | 900 ms at amplitude 255 | the PIN is wrong, or the two Set-PIN entries differ |
 
 ---
 
 ## System architecture
 
-BandPin is a three-node distributed system:
+All the intelligence lives on the ESP32. The watch is a thin client.
 
 ```
-  ┌─────────────────┐     I²C      ┌──────────────────┐    BLE GATT    ┌──────────────────┐
-  │   Trill Flex    │ ──────────►  │     ESP32         │ ─────────────► │  Galaxy Watch 4  │
-  │  (wristband     │              │  (in band housing) │    NOTIFY      │   (Wear OS)      │
-  │   sensor)       │              │                   │                │                  │
-  │                 │              │ • Reads @ 100 Hz  │                │ • Renders PIN UI │
-  │ • Capacitive 1D │              │ • Weighted        │                │ • Randomised     │
-  │   array         │              │   centroid        │                │   zone mapping   │
-  │ • 30 segments   │              │ • Zone classify   │                │ • PIN validation │
-  │ • 15-bit res.   │              │ • Debounce 50 ms  │                │ • Haptic confirm │
-  │ • Full length,  │              │ • BLE peripheral  │                │ • Trust anchor   │
-  │   no cutting    │              │                   │                │                  │
-  └─────────────────┘              └──────────────────┘                └──────────────────┘
+Trill Flex x2 ──I2C──► ESP32 ──BLE GATT NOTIFY──► Galaxy Watch 4
+(both at 0x48,         gesture engine             haptics, dots UI, CSV logs
+ separate buses)       @ 100 Hz
 ```
 
-### Data flow for a single tap
+### Wiring
 
-```
-1. Finger touches band
-2. Trill Flex → 30 capacitive values over I²C (every 10 ms)
-3. ESP32 computes weighted centroid → normalised position [0.0–1.0]
-4. Zone classifier: position → LEFT / MID / RIGHT  (with 4% hysteresis)
-5. Debounce filter: contact held ≥ 50 ms → confirmed tap event
-6. BLE GATT NOTIFY → 4-byte payload to Watch 4
-7. Watch decodes zone + intra-zone position
-8. PinEngine maps zone → digit (using current randomised mapping)
-9. If PIN complete → validate against stored secret → haptic feedback
-```
+Both Trill Flex boards ship with the same factory address, 0x48. Rather than
+re-addressing one board and splitting the I2C lines with a breadboard or a
+Y-cable inside the band, each strip gets its own I2C bus. The ESP32 has two
+hardware controllers, so both strips keep 0x48 and are wired straight to the
+board with no extra components.
 
-### BLE payload format (4 bytes, big-endian)
+| | SDA | SCL | Address | Bus |
+|---|---|---|---|---|
+| Strip A, digits 0 to 4 | GPIO 25 | GPIO 26 | 0x48 | `TwoWire(1)` |
+| Strip B, digits 5 to 9 | GPIO 21 | GPIO 22 | 0x48 | `Wire` |
 
-```
-  Byte 0 : zone index         (0 = LEFT, 1 = MID, 2 = RIGHT)
-  Byte 1 : intra-zone pos × 100  (0–100)
-  Byte 2 : duration_ms high byte
-  Byte 3 : duration_ms low byte
-```
+Common ground, I2C clock at 400 kHz. Both strips are optional at boot and are
+re-probed once per second while running, so a strip can be unplugged and
+reconnected without restarting the ESP32.
+
+### Active region of the strip
+
+Only part of each Trill Flex is mounted on the band and actually reachable, so
+the firmware uses the fraction from `ACTIVE_START` (0.08) to `ACTIVE_END` (0.39)
+of the raw sensor length. Touches outside that window are discarded, and
+positions inside it are rescaled to 0.0 to 1.0 before being split into the five
+zones. Adjust these two constants if the strips are remounted.
+
+### Gesture parameters
+
+Tunable at the top of the firmware, meant to be pilot-tested.
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `TAP_MAX_MS` | 250 | longest contact that still counts as a tap |
+| `DOUBLE_TAP_GAP_MS` | 400 | longest pause between the two taps |
+| `HOLD_DELETE_MS` | 2000 | hold this long without sliding to delete |
+| `HOLD_REPEAT_DELETE_MS` | 600 | keep holding to delete again, every |
+| `ZONE_HYSTERESIS` | 0.04 | anti-flicker margin, fraction of strip length |
+| `NUM_ZONES` | 5 | zones per strip |
+| `SAMPLE_INTERVAL_MS` | 10 | sensor loop, 100 Hz |
+
+### BLE event payload, 6 bytes
+
+| Byte | Field | Values |
+|---|---|---|
+| 0 | event type | 0 `DOWN`, 1 `TICK`, 2 `UP`, 3 `SELECT`, 4 `DELETE` |
+| 1 | strip | 0 for A, digits 0 to 4; 1 for B, digits 5 to 9 |
+| 2 | digit | 0 to 9, already offset by the firmware |
+| 3 | position | 0 to 100, normalised position inside the active region |
+| 4 to 5 | board time | low 16 bits of `millis()`, big-endian |
+
+Service `4A420001-1000-8000-0080-00805F9B34FB`, characteristic
+`4A420002-1000-8000-0080-00805F9B34FB`, device name `BandPin`.
+
+The protocol is duplicated in three files that must stay in sync:
+`shared/constants.py` as the reference, `BandPinFirmware.ino`, and
+`BandBleClient.kt`. Change one, change all three.
 
 ---
 
-## File structure
+## Repository layout
 
 ```
-bandpin/
+BandPin/
+├── Backend/
+│   ├── BandPinFirmware/BandPinFirmware.ino   <- ESP32 gesture engine and BLE server
+│   └── Test_touch/sketch_jun27a/             <- raw Trill sensor test sketch
 │
-├── README.md                   ← you are here
+├── Frontend/                                 <- Wear OS app, Kotlin and Compose
+│   ├── app/src/main/java/com/android/bandpinwatch/
+│   │   ├── ble/BandBleClient.kt              <- scan, connect, decode 6-byte events
+│   │   ├── presentation/MainActivity.kt      <- permissions, navigation, haptics
+│   │   ├── presentation/PinInputController.kt<- input and study state machine
+│   │   ├── presentation/screen/              <- menu, Set-PIN, Enter-PIN screens
+│   │   └── study/TrialLogger.kt              <- events.csv and trials.csv
+│   ├── Evulation/                            <- exported study data, one folder per session
+│   └── export_evaluation.ps1                 <- pulls the CSVs and builds Excel files
 │
-├── esp32_firmware/
-│   ├── main.py                 ← entry point; flash this as main.py on the ESP32
-│   ├── trill_reader.py         ← Trill Flex I²C driver + zone classifier + debounce
-│   └── ble_peripheral.py       ← BLE GATT peripheral; notifies Watch 4 on each tap
-│
-├── watch_app/
-│   └── BandPinApp.kt           ← full Wear OS app (BLE client + PIN engine + Compose UI)
-│
-├── shared/
-│   └── constants.py            ← BLE UUIDs, zone definitions, PIN protocol constants
-│                                  (Python reference; Kotlin equivalents are in BandPinApp.kt)
-│
-└── study_logger.py             ← records per-trial data (time, errors, condition) to CSV + JSON
+├── shared/constants.py                       <- protocol reference
+└── TESTING.md                                <- 3-stage hardware verification
 ```
-
----
-
-## Module responsibilities
-
-### `trill_reader.py`
-
-| Class | Responsibility |
-|---|---|
-| `TrillFlex` | I²C driver — sends scan command, reads 30×2-byte values, computes weighted centroid |
-| `ZoneClassifier` | Maps normalised position to LEFT/MID/RIGHT with hysteresis; emits confirmed tap events after debounce |
-| `BandPinSensor` | Top-level 100 Hz loop; wires sensor → classifier → callback |
-
-### `ble_peripheral.py`
-
-Registers a custom GATT service and one notifiable characteristic. Packs each tap
-event into 4 bytes and calls `gatts_notify()`. Restarts advertising automatically on
-disconnect so the watch can reconnect without rebooting the ESP32.
-
-### `main.py`
-
-Six lines: instantiate `BandPinBLE`, define `on_tap` callback that calls
-`ble.notify_tap()`, instantiate `BandPinSensor` with the callback, run the loop.
-
-### `BandPinApp.kt`
-
-| Class | Responsibility |
-|---|---|
-| `PinEngine` | Randomised digit→zone mapping; intra-zone disambiguation; PIN validation |
-| `BleManager` | GATT client; scans for "BandPin"; subscribes to notifications; parses 4-byte payload |
-| `BandPinViewModel` | State machine: `Scanning → Entering → Success / Failure`; Compose-friendly `StateFlow` |
-| `BandPinApp` | Root Composable; reacts to state changes |
-| `EnteringScreen` | Shows PIN progress dots + current zone→digit mapping chips |
-| `MainActivity` | Wires BLE manager + viewmodel; triggers haptic on each tap |
-
-### `study_logger.py`
-
-Records `participant_id`, `condition` (bandpin / touchscreen), `trial_number`,
-`completion_time_ms`, `num_errors`, and individual tap events. Writes two files per
-session: a detailed `.json` (tap-level) and a summary `.csv` ready for pandas or R.
-
----
-
-## Study design (overview)
-
-**Within-subjects**, two conditions, counterbalanced:
-
-- **Baseline:** standard touchscreen PIN on the Galaxy Watch 4
-- **Treatment:** BandPin wristband entry
-
-**User role:** participant enters a 4-digit PIN — measures completion time, error rate, NASA-TLX.
-
-**Attacker role:** observer watches video recordings from three angles (top, side, tilted)
-and tries to reconstruct the PIN — measures reconstruction success rate.
-
-The primary hypothesis: BandPin reduces PIN reconstruction rate significantly below
-Khan et al.'s 80% baseline, while keeping completion time and error rate at an
-acceptable level.
-
----
-
-## Hardware setup
-
-| Component | Detail |
-|---|---|
-| Trill Flex | Full strip (30 segments, no cutting), mounted on wristband below watch face |
-| ESP32 DevKitC | SDA → GPIO 21, SCL → GPIO 22, powered via USB during study sessions |
-| Galaxy Watch 4 | 40 mm, Wear OS; receives BLE notifications from ESP32 |
-| Wristband housing | 3D-printed clip to hold ESP32 and route I²C cable to sensor |
 
 ---
 
 ## Getting started
 
-### Flash the ESP32 (MicroPython)
+### Firmware
 
-1. Install MicroPython on the ESP32 (`esptool.py` or Thonny).
-2. Copy `esp32_firmware/trill_reader.py`, `esp32_firmware/ble_peripheral.py`, and
-   `esp32_firmware/main.py` to the ESP32 root using `mpremote` or the IntelliJ
-   MicroPython plugin.
-3. Reset the board — it will advertise as **"BandPin"** immediately.
+Built and flashed from the Arduino IDE. There is no CLI build.
 
-### Build and deploy the watch app
+1. Boards Manager, install esp32 by Espressif Systems, then select ESP32 Dev Module.
+2. Library Manager, install Trill by Bela.
+3. Open `Backend/BandPinFirmware/BandPinFirmware.ino` and upload.
+4. Serial Monitor at 115200 baud. Every gesture prints an `[EVT]` line, so the
+   whole gesture engine can be verified without the watch.
 
-1. Open `watch_app/` as an Android/Wear OS project in Android Studio (or IntelliJ
-   with the Android plugin).
-2. Set the `targetSdk` to 30+ and add the required permissions to `AndroidManifest.xml`:
-   `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, `VIBRATE`.
-3. Pair the Galaxy Watch 4 via ADB over Wi-Fi and run the app.
+### Watch app
 
-### Run the study logger
+From `Frontend/`:
 
-```python
-from study_logger import TrialLogger
-
-logger = TrialLogger(output_dir="data/")
-logger.start_trial("P01", "bandpin", trial_num=1)
-# ... trial runs ...
-logger.end_trial(correct=True)
-logger.save(session_id="session_01")
+```powershell
+.\gradlew.bat assembleDebug
+.\gradlew.bat installDebug
 ```
+
+Deployment target is a Galaxy Watch 4 over wireless debugging, paired with
+`adb pair` and `adb connect`. Grant the Bluetooth permission on first launch or
+the app never scans.
+
+### Running a session
+
+The menu offers Enter PIN and Set PIN. Set PIN asks for the new PIN twice and
+stores it once both entries match; the stored PIN survives restarts. During
+entry the screen shows only the four dots, and the app closes and reopens itself
+after each successful entry while keeping the BLE connection alive.
+
+### Exporting study data
+
+`Frontend/export_evaluation.ps1` reads both CSV files off the watch over ADB and
+writes one folder per trial containing a CSV and an Excel version. Set `$device`
+to the current `ip:port` of the watch and `$baseDir` to the output directory
+before running it; both are hardcoded at the top of the script. It needs Python
+with `openpyxl` on the PATH.
+
+The equivalent manual pull is:
+
+```
+adb -s <ip:port> shell run-as com.android.bandpinwatch cat files/bandpin_study/events.csv
+```
+
+`events.csv` holds one row per band event plus the `TRIAL_START`,
+`TRIAL_END_SUCCESS`, `TRIAL_END_FAILED` and `TRIAL_CANCELLED` markers.
+`trials.csv` holds one row per completed trial with the target and entered PIN,
+correctness, error counts, entry and completion time, and the gesture counts.
+
+There are no automated tests. Verification is the hardware procedure in
+[TESTING.md](TESTING.md).
+
+---
+
+## Study data
+
+`Frontend/Evulation/` currently holds seven exported sessions covering
+participants P1 to P6, with 14 completed trials and roughly 590 logged events.
+Folders are named `<session>_<participant>`, and P1 appears in two sessions.
+
+---
+
+## Known issues
+
+- Delete and wrong digit produce the same vibration. `MainActivity.playHaptic`
+  lists `HapticCue.DELETE` in two branches of the same `when`, and the first one
+  it shares with `WRONG_DIGIT` wins, so the distinct delete pattern below it is
+  unreachable. The two cues need to be distinguishable for an eyes-free design.
+- The `condition` column comes out empty in the exported trials. It is derived
+  from `maxDigit`, which defaults to the single-strip value and has no control
+  in the current user interface.
+- `participantNumber` and `maxDigit` are not persisted, so they reset when the
+  app restarts itself after an entry.
+- The target PIN is fixed rather than generated per trial, so learning effects
+  and digit-position effects are confounded.
+- `EnterPinScreen.kt` is an empty placeholder. The entry UI still lives in
+  `MainActivity`.
+- The PIN is stored in `SharedPreferences` in the clear, and the logs record
+  target and entered PINs. That is fine for a lab prototype and nothing else.
+- The ESP32 is powered over USB, so the assembly is not yet a self-contained
+  wearable.
 
 ---
 
 ## Key references
 
-- Stanke et al. (2024). **CaseTouch: Occlusion-Free Touch Input by adding a Thin Sensor Stripe to the Smartwatch Case.** MUM '24. — hardware basis
-- Böhmer et al. (2026). **MultiBand: Adding Multi-Touch to the Smartwatch Wristband for Extended Interaction.** — wristband input basis
-- Khan, Hengartner & Vogel. **Evaluating Attack and Defense Strategies for Smartphone PIN Shoulder Surfing.** — 80% baseline attack figure
-- Guerar et al. (2019). **2GesturePIN: Securing PIN-Based Authentication on Smartwatches.** — related security approach
-- Reuter et al. (2025). **MultiBezel: Adding Multi-Touch to a Smartwatch Bezel to Control Music.** CHI EA '25.
+- Brudy et al. (2019). Cross-Device Taxonomy. CHI '19. https://doi.org/10.1145/3290605.3300792
+- Cauchard et al. (2016). ActiVibe: Design and Evaluation of Vibrations for Progress Monitoring. CHI '16. https://doi.org/10.1145/2858036.2858046
+- Khan, Hengartner and Vogel (2018). Evaluating Attack and Defense Strategies for Smartphone PIN Shoulder Surfing. CHI '18. https://doi.org/10.1145/3173574.3173738
+- Mäkelä et al. (2021). Hidden Interaction Techniques. CHI '21. https://doi.org/10.1145/3411764.3445504
+- Petersen, Reuter and Böhmer (2026). MultiBand: Adding Multi-Touch to the Smartwatch Wristband. CHI EA '26. https://doi.org/10.1145/3772363.3799304
+- Reuter et al. (2025). MultiBezel: Adding Multi-Touch to a Smartwatch Bezel to Control Music. CHI EA '25. https://doi.org/10.1145/3706599.3720156
+- Stanke et al. (2024). CaseTouch: Occlusion-Free Touch Input by adding a Thin Sensor Stripe to the Smartwatch Case. MUM '24. https://doi.org/10.1145/3701571.3701583
+- Gehman (2025). A User-Centered Approach to Haptic Interface Design. MSc thesis, Penn State.
+- Tkacz (2024). A Comparison of Haptic and Visual Support for Navigation in an Audio-Based City Game. MSc thesis, Tampere University.

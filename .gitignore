@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+.kotlin/
+
+# Study data (never commit participant data)
+data/
+paper/
+# OS
+.DS_Store
+Thumbs.db

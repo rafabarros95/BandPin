@@ -45,7 +45,7 @@ class TrialLogger(context: Context) {
         event: BandEvent
     ) {
         val stripName = if (event.strip == 0) "A" else "B"
-        val zone = event.digit % 5
+        val zone = event.zone
 
         val row = listOf(
             participant,
